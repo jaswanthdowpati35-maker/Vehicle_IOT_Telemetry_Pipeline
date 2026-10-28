@@ -1,0 +1,43 @@
+{
+  "doc": "Vehicle telemetry data for real-time monitoring",
+  "fields": [
+    {
+      "doc": "Unique vehicle identifier",
+      "name": "vehicle_id",
+      "type": "string"
+    },
+    {
+      "doc": "ISO-8601 timestamp of the reading",
+      "name": "timestamp",
+      "type": "string"
+    },
+    {
+      "doc": "Vehicle speed in kilometers per hour",
+      "name": "speed_kmph",
+      "type": "int"
+    },
+    {
+      "doc": "Remaining fuel percentage (0-100)",
+      "name": "fuel_percent",
+      "type": "int"
+    },
+    {
+      "doc": "Engine temperature in Celsius",
+      "name": "temperature_c",
+      "type": "int"
+    },
+    {
+      "doc": "GPS latitude coordinate (-90 to 90)",
+      "name": "latitude",
+      "type": "double"
+    },
+    {
+      "doc": "GPS longitude coordinate (-180 to 180)",
+      "name": "longitude",
+      "type": "double"
+    }
+  ],
+  "name": "VehicleTelemetry",
+  "namespace": "com.vehicletelemetry",
+  "type": "record"
+}
