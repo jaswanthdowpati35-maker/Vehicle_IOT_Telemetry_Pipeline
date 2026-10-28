@@ -1,0 +1,144 @@
+
+
+
+--------------------------------- Vehicle Speeding -----------------------------------------------
+
+
+
+CREATE TABLE `vehicle.speeding` (
+  vehicle_id STRING,              -- Which vehicle is speeding
+  speed_kmph INT,                 -- Current speed in km/h (INT matches Avro int type)
+  speed_limit INT,                -- Speed limit threshold (default: 80)
+  `timestamp` STRING,             -- ISO-8601 timestamp
+  latitude DOUBLE,                -- GPS latitude coordinate
+  longitude DOUBLE                -- GPS longitude coordinate
+) WITH (
+  'connector' = 'confluent',
+  'value.format' = 'avro-registry'
+);
+
+
+
+
+INSERT INTO `vehicle.speeding`
+SELECT
+  vehicle_id,
+  CAST(speed_kmph AS INT),        -- Cast BIGINT to INT (source has BIGINT, sink has INT)
+  80 AS speed_limit,              -- Hard-coded threshold (matches schema default)
+  `timestamp`,                    -- Pass through ISO-8601 timestamp
+  latitude,
+  longitude
+FROM `vehicle.telemetry`          -- Use cataloged table (backticks for dot in name)
+WHERE speed_kmph > 80;            -- FILTER CONDITION: Only vehicles exceeding 80 km/h
+
+
+
+
+
+
+--------------------------------- Vehicle Low Fuel -----------------------------------------------
+
+CREATE TABLE `vehicle.lowfuel` (
+  vehicle_id STRING,              -- Which vehicle has low fuel
+  fuel_percent INT,               -- Current fuel level as percentage (0-100, INT matches Avro int type)
+  fuel_threshold INT,             -- Low fuel threshold percentage (default: 15)
+  `timestamp` STRING,             -- ISO-8601 timestamp
+  latitude DOUBLE,                -- GPS latitude coordinate
+  longitude DOUBLE                -- GPS longitude coordinate
+) WITH (
+  'connector' = 'confluent',
+  'value.format' = 'avro-registry'
+);
+
+
+
+
+INSERT INTO `vehicle.lowfuel`
+SELECT
+  vehicle_id,
+  CAST(fuel_percent AS INT),      -- Cast BIGINT to INT (source has BIGINT, sink has INT)
+  15 AS fuel_threshold,           -- Hard-coded threshold (matches schema default)
+  `timestamp`,                    -- Pass through ISO-8601 timestamp
+  latitude,
+  longitude
+FROM `vehicle.telemetry`          -- Use cataloged table (backticks for dot in name)
+WHERE fuel_percent < 15;          -- FILTER CONDITION: Only vehicles with fuel below 15%
+
+
+
+
+--------------------------------- Vehicle Overheating -----------------------------------------------
+
+CREATE TABLE `vehicle.overheating` (
+  vehicle_id STRING,              -- Which vehicle is overheating
+  temperature_c INT,              -- Current engine temperature in Celsius (INT matches Avro int type)
+  temperature_threshold INT,      -- Overheating threshold in Celsius (default: 90)
+  `timestamp` STRING,             -- ISO-8601 timestamp
+  latitude DOUBLE,                -- GPS latitude coordinate
+  longitude DOUBLE                -- GPS longitude coordinate
+) WITH (
+  'connector' = 'confluent',
+  'value.format' = 'avro-registry'
+);
+
+INSERT INTO `vehicle.overheating`
+SELECT
+  vehicle_id,
+  CAST(temperature_c AS INT),     -- Cast BIGINT to INT (source has BIGINT, sink has INT)
+  90 AS temperature_threshold,    -- Hard-coded threshold (matches schema default)
+  `timestamp`,                    -- Pass through ISO-8601 timestamp
+  latitude,
+  longitude
+FROM `vehicle.telemetry`          -- Use cataloged table (backticks for dot in name)
+WHERE temperature_c > 90;         -- FILTER CONDITION: Only vehicles with temp above 90°C
+
+--------------------------------- Alert Notifications -----------------------------------------------
+
+CREATE TABLE `vehicle.alerts.notifications` (
+  vehicle_id STRING,
+  `timestamp` STRING,             -- ISO 8601 format from source
+
+  -- Alert metadata
+  alert_type STRING,              -- 'SPEEDING', 'LOW_FUEL', or 'OVERHEATING'
+
+  -- Telemetry data (all fields, even if not used for this alert type)
+  -- This allows Azure Function to make decisions based on full context
+  speed_kmph INT,
+  fuel_percent INT,
+  temperature_c INT,
+  latitude DOUBLE,
+  longitude DOUBLE
+) WITH (
+  'connector' = 'confluent',
+  'value.format' = 'avro-registry',
+  'kafka.cleanup-policy' = 'delete',
+  'kafka.retention.time' = '1 d'  -- Use duration format (not milliseconds)
+);
+
+INSERT INTO `vehicle.alerts.notifications`
+SELECT
+vehicle_id,
+`timestamp`,
+
+-- Classify alert type using CASE expression
+CASE
+  WHEN speed_kmph > 80 THEN 'SPEEDING'
+  WHEN fuel_percent < 15 THEN 'LOW_FUEL'
+  WHEN temperature_c > 90 THEN 'OVERHEATING'
+  ELSE 'UNKNOWN'  -- Should never happen with WHERE clause below
+END AS alert_type,
+
+-- Include ALL telemetry fields for context
+-- (Azure Function may need them for severity detection)
+CAST(speed_kmph AS INT) AS speed_kmph,
+CAST(fuel_percent AS INT) AS fuel_percent,
+CAST(temperature_c AS INT) AS temperature_c,
+latitude,
+longitude
+FROM `vehicle.telemetry`
+WHERE
+-- Only include records that match at least one alert condition
+speed_kmph > 80
+OR fuel_percent < 15
+OR temperature_c > 90;
+
